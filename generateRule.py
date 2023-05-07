@@ -19,7 +19,7 @@ def getPart(letter, last, contLast, p, optional, end, sintaxis):
         last = '('
         optional = True
         p = False
-        sintaxis += 'P'
+        sintaxis += '('
 
     if (letter == 'L' and letter != last):  # Letter
         response += '[A-Z]'
@@ -32,14 +32,17 @@ def getPart(letter, last, contLast, p, optional, end, sintaxis):
         sintaxis += letter
     elif (letter == '-' or letter == ' '):
         response += letter
-        sintaxis += letter
+        if(letter == ' '):
+            sintaxis += '_'
+        else:
+            sintaxis += letter
 
     if (optional):
         response += ')?'
         last = ')?'
         optional = False
         p = False
-        sintaxis += 'PI'
+        sintaxis += ')?'
 
     if (last != '(' or last != ')?'):
         last = letter

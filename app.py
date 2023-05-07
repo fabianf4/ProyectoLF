@@ -1,11 +1,14 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from postalCodeModel import PostalCode
 from postalCodeModel import infoPostalCodes
 from connectionDB import create_app
 from generateRule import generateRuleForPostalCodes
 import re
+from compilador import *
 
 app, db = create_app()
+CORS(app)
 
 paises = {
     "AD": "Andorra",
@@ -156,7 +159,8 @@ def postalCodeGet(code=None):
     if request.method == 'GET':
         postalCodes = PostalCode.query.filter_by(postal_code=code).all()
         if postalCodes:
-            postalCodes_list = [postalCode.as_dict() for postalCode in postalCodes]
+            postalCodes_list = [postalCode.as_dict()
+                                for postalCode in postalCodes]
             return jsonify(postalCodes_list)
         else:
             return jsonify({"message": "Postal Code not found"})
@@ -170,13 +174,118 @@ def validateCode(code=None):
 
         for er in ers:
             if re.match(er.er, code):
-                countrys[er.country_code] = {"name": er.name, "er": er.er, "rule": er.rule}
-            
+                countrys[er.country_code] = {
+                    "name": er.name, "er": er.er, "rule": er.rule}
 
         if countrys:
             return jsonify(countrys)
         else:
             return jsonify({"message": "Code is not valid"})
+
+
+@app.route('/validateLexical', methods=['post'])
+def validateLexico():
+    if request.method == "POST":
+        code = request.json['code']
+        isOkLexico, msg = analisisLexico(code)
+        return jsonify({"isOkLexico": isOkLexico, "msg": msg})
+
+
+@app.route('/validateSemantic', methods=['post'])
+def validateSemantico():
+    if request.method == "POST":
+        code = request.json['code']
+        isOkSemantico, msg = analisisSemantico(code)
+        return jsonify({"isOkSemantico": isOkSemantico, "msg": msg})
+
+
+@app.route('/validateStructural', methods=['post'])
+def validateStructural():
+    if request.method == "POST":
+        code = request.json['code']
+        isOkEstructural, msg = analisisEstructural(code)
+        return jsonify({"isOkEstructural": isOkEstructural, "msg": msg})
+
+
+@app.route('/createNewRule', methods=['post'])
+def createNewRule():
+    if request.method == "POST":
+        code = request.json['code']
+        countryCode = request.json['countryCode']
+        countryName = request.json['countryName']
+
+        isOkLexico, msg = analisisLexico(code)
+        if not isOkLexico:
+            return jsonify({"isOkLexico": isOkLexico, "msg": msg})
+
+        isOkSemantico, msg = analisisSemantico(code)
+        if not isOkSemantico:
+            return jsonify({"isOkSemantico": isOkSemantico, "msg": msg})
+
+        isOkEstructural, msg = analisisEstructural(code)
+        if not isOkEstructural:
+            return jsonify({"isOkEstructural": isOkEstructural, "msg": msg})
+
+        er, rule = generateER(code)
+
+        data = infoPostalCodes.query.filter_by(
+            country_code=countryCode).first()
+
+        if (data):
+            data.er = er
+            data.rule = rule
+            data.name = countryName
+            db.session.commit()
+            msg = "Update rule for " + countryName
+
+        else:
+            newInfo = infoPostalCodes(
+                country_code=countryCode, er=er, rule=rule, name=countryName)
+            db.session.add(newInfo)
+            db.session.commit()
+            msg = "Added new rule for " + countryName
+
+        return jsonify({"isOkLexico": isOkLexico, "isOkSemantico": isOkSemantico, "isOkEstructural": isOkEstructural, "msg": msg, "er": er, "rule": rule})
+
+
+@app.route('/createNewRule2', methods=['post'])
+def createNewRule2():
+    if request.method == "POST":
+        codes = request.json['codes'].split("\n")
+        countryCode = request.json['countryCode']
+        countryName = request.json['countryName']
+
+        er, rule = generateRuleForPostalCodes(codes)
+
+        data = infoPostalCodes.query.filter_by(
+            country_code=countryCode).first()
+
+        if (data):
+            data.er = er
+            data.rule = rule
+            data.name = countryName
+            db.session.commit()
+            msg = "Update rule for " + countryName
+
+        else:
+            newInfo = infoPostalCodes(
+                country_code=countryCode, er=er, rule=rule, name=countryName)
+            db.session.add(newInfo)
+            db.session.commit()
+            msg = "Added new rule for " + countryName
+
+        return jsonify({"msg": msg, "er": er, "rule": rule})
+
+
+@app.route('/getRules', methods=['get'])
+def getRules():
+    if request.method == 'GET':
+        ers = infoPostalCodes.query.all()
+
+        inf = [er.as_dict() for er in ers]
+
+        return jsonify(inf)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
